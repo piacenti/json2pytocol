@@ -7,13 +7,14 @@ with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 
 setuptools.setup(
     name="json2pytocol",
-    version="0.0.2",
+    version="0.0.3",
     author="Gabriel Piacenti",
     author_email="piacenti10@gmail.com",
     description="Generate Python Protocol Classes From Json",
     long_description=long_description,
     long_description_content_type='text/markdown',
     packages=setuptools.find_packages(),
+    url='https://github.com/piacenti/json2pytocol',
     install_requires=[
         "dotmap"
     ],
