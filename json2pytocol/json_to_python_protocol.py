@@ -24,7 +24,7 @@ class _Node:
     is_list: bool = False
     parent: Optional["_Node"] = None
     children: List["_Node"] = field(default_factory=list)
-    class_name: str = None
+    class_name: Optional[str] = None
     extends: Optional["_Node"] = None
 
     def path(self):
@@ -91,7 +91,7 @@ def _generate_classes(node_map: Dict[str, _Node], root_name: str):
     # find root
     # set node class names
 
-    root = None
+    root: Optional[_Node] = None
     for _, node in node_map.items():
         if _NodeType.CLASS in node.types:
             node.class_name = node.name.title()
@@ -100,6 +100,7 @@ def _generate_classes(node_map: Dict[str, _Node], root_name: str):
             node.class_name = re.sub(pattern='s$', repl='', string=node.name.title())
         if node.parent is None:
             root = node
+    assert root is not None
     root.class_name = root_name[0].upper() + root_name[1:]
     root.name = root_name[0].lower() + root_name[1:]
     # rename duplicates with different properties
@@ -117,10 +118,11 @@ def _generate_classes(node_map: Dict[str, _Node], root_name: str):
                         other_node.extends = node
                 if node.extends is None and other_node.extends is None and len(children_names) != len(
                         other_children_names):
+                    assert other_node.class_name is not None
                     other_node.class_name = other_node.class_name + "2"
 
     # Depth first traversal while creating classes
-    class_map = {}
+    class_map:Dict[str, str] = {}
 
     def loop(current_node: _Node):
         _generate_class_for_node(current_node, class_map)

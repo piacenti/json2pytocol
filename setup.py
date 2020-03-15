@@ -1,13 +1,18 @@
 import setuptools
+from os import path
+
+this_directory = path.abspath(path.dirname(__file__))
+with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
 
 setuptools.setup(
     name="json2pytocol",
-    version="0.0.1",
+    version="0.0.2",
     author="Gabriel Piacenti",
     author_email="piacenti10@gmail.com",
     description="Generate Python Protocol Classes From Json",
-    long_description="Generate Python Protocol Classes From Json",
-    long_description_content_type="text/plain",
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     packages=setuptools.find_packages(),
     install_requires=[
         "dotmap"
