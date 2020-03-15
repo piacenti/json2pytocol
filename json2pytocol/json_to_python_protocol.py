@@ -37,8 +37,6 @@ class _Node:
 
 
 def _determine_if_optional(values: Set) -> bool:
-    test: List[_NodeType] = [_NodeType.NULL]
-    assert test == _NodeType.NULL
     for value in values:
         if value is type(None):
             return True
