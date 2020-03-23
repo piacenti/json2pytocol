@@ -33,6 +33,10 @@ from typing import Protocol, Optional, List, Union
 
 
 class Test(Protocol):
+	glossary: "Glossary"
+
+
+class Glossary(Protocol):
 	GlossDiv: "Glossdiv"
 	title: str
 
@@ -87,6 +91,10 @@ from typing import Protocol, Optional, List, Union
 
 
 class Test(Protocol):
+	person: "Person"
+
+
+class Person(Protocol):
 	address: "Address"
 	children: List["Children"]
 
@@ -126,6 +134,10 @@ from typing import Protocol, Optional, List, Union
 
 
 class Test(Protocol):
+	person: "Person"
+
+
+class Person(Protocol):
 	address: "Address"
 	children: List["Children"]
 
@@ -163,6 +175,10 @@ from typing import Protocol, Optional, List, Union
 
 
 class Test(Protocol):
+	persons: List["Persons"]
+
+
+class Persons(Protocol):
 	age: int
 	name: str
 	suffix: Optional[str]
@@ -193,8 +209,129 @@ from typing import Protocol, Optional, List, Union
 
 
 class Test(Protocol):
+	persons: List["Persons"]
+
+
+class Persons(Protocol):
 	age: int
 	name: str
 	suffix: Union[int,str]
 
 """.lstrip()
+
+
+def test_multiple_top_level():
+    test_json = """
+{
+    "persons":"thing",
+    "thing":"other"
+}
+    """
+    result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
+    assert result == """from typing import Protocol, Optional, List, Union
+
+
+class Test(Protocol):
+	persons: str
+	thing: str
+
+""".lstrip()
+
+
+def test_all_null():
+    test_json = """
+{
+    "persons":null,
+    "thing":null
+}
+    """
+    result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
+    assert result == """from typing import Protocol, Optional, List, Union
+
+
+class Test(Protocol):
+	persons: None
+	thing: None
+
+""".lstrip()
+
+
+def test_dots_in_keys():
+    test_json = """
+{
+    "persons.other":"thing",
+    "thing.bla":3
+}
+    """
+    result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
+    assert result == """from typing import Protocol, Optional, List, Union
+
+
+class Test(Protocol):
+	persons_other: str
+	thing_bla: int
+
+""".lstrip()
+
+
+def test_multiple_classes_of_same_name():
+    test_json = """
+{
+    "type1":{ "address":{"street":2}},
+    "type2":{ "address":{"street1":3}},
+    "type3":{ "address":{"street2":4}}
+}
+    """
+    result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
+    assert result == """from typing import Protocol, Optional, List, Union
+
+
+class Test(Protocol):
+	type1: "Type1"
+	type2: "Type2"
+	type3: "Type3"
+
+
+class Type1(Protocol):
+	address: "Address3"
+
+
+class Address3(Protocol):
+	street: int
+
+
+class Type2(Protocol):
+	address: "Address"
+
+
+class Address(Protocol):
+	street1: int
+
+
+class Type3(Protocol):
+	address: "Address2"
+
+
+class Address2(Protocol):
+	street2: int
+
+""".lstrip()
+
+
+def test_list_of_list_of_lists():
+    test_json = """
+{
+    "type":[[1]],
+    "type2":[[[{"something":2}]]]
+}
+    """
+    result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
+    assert result == """
+""".lstrip()
+
+
+def test_bug():
+    test_json = open("ministering_test.json", "r").read()
+    result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
+    assert result == ""
+    pass

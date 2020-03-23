@@ -25,6 +25,7 @@ class _Node:
     parent: Optional["_Node"] = None
     children: List["_Node"] = field(default_factory=list)
     class_name: Optional[str] = None
+    final_class_name: Optional[str] = None
     extends: Optional["_Node"] = None
 
     def path(self):
@@ -46,6 +47,8 @@ def _determine_if_optional(values: Set) -> bool:
 def _generate_class_for_node(current_node, class_map):
     if _NodeType.CLASS in current_node.types:
         class_name = current_node.class_name
+        if current_node.final_class_name is not None:
+            class_name = current_node.final_class_name
         fields = []
         for child in current_node.children:
             fields.append(child.name + ": " + _get_node_class_type(child))
@@ -58,12 +61,12 @@ class {class_name}(Protocol{extends}):
 \t{fields_string}
 
 """
-        class_map[current_node.class_name] = result
+        class_map[class_name] = result
 
 
 def _get_node_class_type(child: _Node):
     def base_value(types):
-        if child.optional and len(types) == 1:
+        if child.optional and ((len(types) == 1 and types[0] != "None") or (len(types) == 2 and "None" in types)):
             return f"Optional[{types[0]}]"
         if len(types) > 1:
             return "Union[" + (",".join(types)) + "]"
@@ -71,7 +74,10 @@ def _get_node_class_type(child: _Node):
 
     result = []
     if _NodeType.CLASS in child.types:
-        result.append(f'"{child.class_name}"')
+        name = child.class_name
+        if child.final_class_name is not None:
+            name = child.final_class_name
+        result.append(f'"{name}"')
     if _NodeType.NUMBER in child.types:
         result.append("int")
     if _NodeType.STRING in child.types:
@@ -85,6 +91,15 @@ def _get_node_class_type(child: _Node):
         return f"List[{base_value(result)}]"
     else:
         return base_value(result)
+
+
+def _get_name_to_node_map(node_map):
+    result = {}
+    for _, node in node_map.items():
+        if result.get(node.class_name) is None:
+            result[node.class_name] = []
+        result[node.class_name].append(node)
+    return result
 
 
 def _generate_classes(node_map: Dict[str, _Node], root_name: str):
@@ -105,24 +120,32 @@ def _generate_classes(node_map: Dict[str, _Node], root_name: str):
     root.name = root_name[0].lower() + root_name[1:]
     # rename duplicates with different properties
     # extends duplicates when its properties are subsets of another of same name
+    name_to_node_map = _get_name_to_node_map(node_map)
+    class_usage_count: Dict[str, int] = {}
     for _, node in node_map.items():
-        for _, other_node in node_map.items():
-            if node != other_node and node.class_name == other_node.class_name \
-                    and _NodeType.CLASS in node.types and _NodeType.CLASS in other_node.types:
-                children_names = set(map(lambda x: x.class_name, node.children))
-                other_children_names = set(map(lambda x: x.class_name, other_node.children))
+        for other_node in name_to_node_map[node.class_name]:  # type:_Node
+            if node != other_node and _NodeType.CLASS in node.types and _NodeType.CLASS in other_node.types:
+                children_names = set([x.name for x in node.children])
+                other_children_names = set([x.name for x in other_node.children])
                 if len(children_names) != len(other_children_names):
                     if set.issubset(children_names, other_children_names):
                         node.extends = other_node
                     elif set.issubset(other_children_names, children_names):
                         other_node.extends = node
-                if node.extends is None and other_node.extends is None and len(children_names) != len(
-                        other_children_names):
+                if node.extends is None and other_node.extends is None and len(
+                        children_names.intersection(other_children_names)) == 0 and other_node.final_class_name is None:
                     assert other_node.class_name is not None
-                    other_node.class_name = other_node.class_name + "2"
+                    if class_usage_count.get(other_node.class_name) is None:
+                        class_usage_count[other_node.class_name] = 0
+                    class_usage_count[other_node.class_name] = class_usage_count[other_node.class_name] + 1
+                    if class_usage_count[other_node.class_name] == 1:
+                        other_node.final_class_name = other_node.class_name
+                    else:
+                        other_node.final_class_name = other_node.class_name + str(
+                            class_usage_count[other_node.class_name])
 
     # Depth first traversal while creating classes
-    class_map:Dict[str, str] = {}
+    class_map: Dict[str, str] = {}
 
     def loop(current_node: _Node):
         _generate_class_for_node(current_node, class_map)
@@ -167,7 +190,7 @@ def _generate_classes_text(file_name, parsed_json):
     class_name = file_name
     if "_" in class_name:
         class_name = class_name.replace("_", " ").title().replace(" ", "")
-    json_map = _dict_to_dot_map(parsed_json, class_name)
+    json_map = _dict_to_dot_map({class_name: parsed_json}, class_name)
     #   iterate over key and objects keeping track of parentage
     parent_dict = _create_parent_dictionary(json_map)
     # build node tree
@@ -187,10 +210,10 @@ def _normalize(map_or_list_of_maps: Union[List, Dict[str, Any]]):
         # get immutalbe list
         keys = tuple(map_or_list_of_maps.keys())
         for key in keys:
-            if " " in key:
+            if re.search(pattern=r"[ \.]", string=key):
                 value = map_or_list_of_maps[key]
                 map_or_list_of_maps.pop(key, None)
-                map_or_list_of_maps[key.replace(" ", "_")] = value
+                map_or_list_of_maps[re.sub(pattern=r"[ \.]", string=key, repl="_")] = value
         for key, value in map_or_list_of_maps.items():
             _normalize(value)
 
@@ -308,16 +331,11 @@ def _determine_type(index, split, value: Set) -> Tuple[List[_NodeType], bool]:
     return node_types, is_list
 
 
-def _all_of_type(array: Union[List, Set], clazz):
-    for value in array:
-        if value is not type(None) and value is not clazz:
-            return False
-    return True
-
-
 def _has_type(array: Union[List, Set], clazz):
     for value in array:
         if value is not type(None) and value is clazz:
+            return True
+        if value is type(None) and value is type(clazz):
             return True
     return False
 
