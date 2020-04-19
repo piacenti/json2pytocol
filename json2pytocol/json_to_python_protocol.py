@@ -22,6 +22,7 @@ class _Node:
     types: List[_NodeType]
     optional: bool = True
     is_list: bool = False
+    nested_lists: int = 1
     parent: Optional["_Node"] = None
     children: List["_Node"] = field(default_factory=list)
     class_name: Optional[str] = None
@@ -44,7 +45,7 @@ def _determine_if_optional(values: Set) -> bool:
     return False
 
 
-def _generate_class_for_node(current_node, class_map):
+def _generate_class_for_node(current_node: _Node, class_map):
     if _NodeType.CLASS in current_node.types:
         class_name = current_node.class_name
         if current_node.final_class_name is not None:
@@ -52,7 +53,7 @@ def _generate_class_for_node(current_node, class_map):
         fields = []
         for child in current_node.children:
             fields.append(child.name + ": " + _get_node_class_type(child))
-        fields_string = "\n\t".join(fields)
+        fields_string = "\n\t".join(sorted(fields))
         extends = ""
         if current_node.extends is not None:
             extends = ", " + current_node.extends.class_name
@@ -88,7 +89,13 @@ def _get_node_class_type(child: _Node):
         result.append("None")
 
     if child.is_list:
-        return f"List[{base_value(result)}]"
+        list_string = ""
+        for each in range(child.nested_lists):
+            list_string += "List["
+        list_string += base_value(result)
+        for each in range(child.nested_lists):
+            list_string += "]"
+        return list_string
     else:
         return base_value(result)
 
@@ -249,15 +256,17 @@ def _create_parent_dictionary(map):
 
     # depth first search to aggregate all possible values and paths
     def loop(obj, parent_string: str):
-        if isinstance(obj, DotMap):
+        if isinstance(obj, DotMap) or isinstance(obj, dict):
             properties = dir(obj)
+            if isinstance(obj, dict):
+                properties = obj.keys()
             for prop in properties:
                 child = obj[prop]
                 if parent_string.strip() == "":
                     new_parent = prop
                 else:
                     new_parent = parent_string + "." + prop
-                if isinstance(child, DotMap) or isinstance(child, list):
+                if isinstance(child, DotMap) or isinstance(child, list) or isinstance(child, dict):
                     loop(child, new_parent)
                 else:
                     if parent_dict.get(new_parent) is None:
@@ -267,7 +276,7 @@ def _create_parent_dictionary(map):
         elif isinstance(obj, list):
             for index, child in enumerate(obj):
                 list_parent_string = parent_string + "[x]"
-                if isinstance(child, DotMap) or isinstance(child, list):
+                if isinstance(child, DotMap) or isinstance(child, list) or isinstance(child, dict):
                     loop(child, list_parent_string)
                 else:
                     if parent_dict.get(list_parent_string) is None:
@@ -275,6 +284,14 @@ def _create_parent_dictionary(map):
                     parent_dict[list_parent_string].add(type(child))
 
     loop(map, "")
+    # cleanup situations where a list could also be null
+    to_test = [key for key, x in parent_dict.items() if type(None) in x]
+    # remove these keys if there is a list version of them
+    parent_keys = [k for k, y in parent_dict.items()]
+    to_remove = [key for key in to_test if len([y for y in parent_keys if f"{key}[x]" in y]) > 0]
+    [parent_dict.pop(x) for x in to_remove]
+    # mark the optional lists are nullable
+    # TODO
     return parent_dict
 
 
@@ -286,20 +303,21 @@ def _create_node_map(parent_dict):
             node_key = ".".join(split[0:index + 1])
             # if not exists add new
             parent_node = None
-            node_types, is_list = _determine_type(index, split, value)
+            node_types, is_list, nested_lists = _determine_type(index, split, value)
             name = split[index].replace("[x]", "")
             optional = _determine_if_optional(value)
             if index > 0:
                 parent_node = node_map[".".join(split[0:index])]
             if node_map.get(node_key) is None:
-                node_map[node_key] = _Node(name=name, types=node_types, optional=optional, is_list=is_list)
+                node_map[node_key] = _Node(name=name, types=node_types, optional=optional, is_list=is_list,
+                                           nested_lists=nested_lists)
             if parent_node and node_map[node_key].parent is None:
                 node_map[node_key].parent = parent_node
                 parent_node.children.append(node_map[node_key])
     return node_map
 
 
-def _determine_type(index, split, value: Set) -> Tuple[List[_NodeType], bool]:
+def _determine_type(index, split, value: Set) -> Tuple[List[_NodeType], bool, int]:
     node_types = []
     is_list = False
     if "[x]" in split[index]:
@@ -327,8 +345,8 @@ def _determine_type(index, split, value: Set) -> Tuple[List[_NodeType], bool]:
                 node_types.append(_NodeType.BOOLEAN)
             if _has_type(value, None):
                 node_types.append(_NodeType.NULL)
-
-    return node_types, is_list
+    nested_lists = len(re.findall(pattern=r"\[x\]", string=split[index]))
+    return node_types, is_list, nested_lists
 
 
 def _has_type(array: Union[List, Set], clazz):

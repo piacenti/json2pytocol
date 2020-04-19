@@ -326,12 +326,70 @@ def test_list_of_list_of_lists():
 }
     """
     result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
-    assert result == """
+    assert result == """from typing import Protocol, Optional, List, Union
+
+
+class Test(Protocol):
+	type2: List[List[List["Type2"]]]
+	type: List[List[int]]
+
+
+class Type2(Protocol):
+	something: int
+
 """.lstrip()
 
 
-def test_bug():
-    test_json = open("ministering_test.json", "r").read()
+def test_optional_list():
+    test_json = """
+{
+    "type":[{"something":[1,2,3]},
+    {"something":null}]
+}
+    """
+    result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
+    assert result == """from typing import Protocol, Optional, List, Union
+
+
+class Test(Protocol):
+	type: List["Type"]
+
+
+class Type(Protocol):
+	something: List[int]
+
+""".lstrip()
+
+
+def test_nullable_object():
+    test_json = """
+    {
+    "type":[{ "address":{"address1":{"street": 2}}},
+    { "address":null}]
+    }
+    """
+    result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
+    assert result == ""
+    pass
+
+def test_object_with_value():
+    test_json = """
+    {
+    "type":[{ "address":{"address1":{"street": 2}}},
+    { "address":"value"}]
+    }
+    """
+    result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
+    assert result == ""
+    pass
+
+def test_object_missing():
+    test_json = """
+    {
+    "type":[{ "address":{"address1":{"street": 2},"address2":{"street": 3}}},
+    { "address":{"address1":{"street": 2}}}]
+    }
+    """
     result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
     assert result == ""
     pass
