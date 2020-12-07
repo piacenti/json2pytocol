@@ -311,6 +311,8 @@ def _create_node_map(parent_dict):
             if node_map.get(node_key) is None:
                 node_map[node_key] = _Node(name=name, types=node_types, optional=optional, is_list=is_list,
                                            nested_lists=nested_lists)
+            elif optional and index==len(split)-1:
+                node_map[node_key].optional = optional
             if parent_node and node_map[node_key].parent is None:
                 node_map[node_key].parent = parent_node
                 parent_node.children.append(node_map[node_key])

@@ -369,10 +369,28 @@ def test_nullable_object():
     }
     """
     result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
-    assert result == ""
-    pass
+    assert result == """from typing import Protocol, Optional, List, Union
 
-def test_object_with_value():
+
+class Test(Protocol):
+	type: List["Type"]
+
+
+class Type(Protocol):
+	address: Optional["Address"]
+
+
+class Address(Protocol):
+	address1: "Address1"
+
+
+class Address1(Protocol):
+	street: int
+
+"""
+
+
+def test_bject_with_value_should_be_union():
     test_json = """
     {
     "type":[{ "address":{"address1":{"street": 2}}},
@@ -381,9 +399,9 @@ def test_object_with_value():
     """
     result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
     assert result == ""
-    pass
 
-def test_object_missing():
+
+def test_object_missing_should_be_optional():
     test_json = """
     {
     "type":[{ "address":{"address1":{"street": 2},"address2":{"street": 3}}},
@@ -392,4 +410,14 @@ def test_object_missing():
     """
     result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
     assert result == ""
-    pass
+
+
+def test_should_create_wrapper_on_top_list():
+    test_json = """
+    [
+    {"number":1},
+    {"number":2}
+    ]
+    """
+    result = jp._generate_classes_text(file_name="test", parsed_json=json.loads(test_json))
+    assert result == ""
